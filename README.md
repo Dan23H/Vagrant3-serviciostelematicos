@@ -87,8 +87,9 @@ sudo systemctl restart apache2
 
 # 2. Verifica que Docker y docker-compose empaquete la aplicación web
 
-Para verificar que funciona el docker y docker-compose, es necesario colocar la siguiente línea:
+Para verificar que funciona el docker y docker-compose, es necesario colocar las siguientes líneas:
 ```
+cd /webapp/
 sudo docker-compose up --build
 ```
 
