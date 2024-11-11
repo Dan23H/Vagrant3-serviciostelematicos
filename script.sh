@@ -158,8 +158,8 @@ RUN apt-get update && \
 
 
 # Copia la aplicación y configura Apache
-COPY webapp /var/www/webapp
-COPY webapp/my-httpd-vhosts.conf /etc/apache2/sites-available/my-ssl.conf
+COPY . /var/www/webapp
+COPY ./my-httpd-vhosts.conf /etc/apache2/sites-available/my-ssl.conf
 
 # Habilita SSL y el módulo WSGI de Apache
 RUN a2enmod wsgi ssl && \
