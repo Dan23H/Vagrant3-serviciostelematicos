@@ -148,28 +148,67 @@ sudo apachectl -t
 echo "Creating and configuring Dockerfile"
 sudo bash -c 'cat > /home/vagrant/webapp/Dockerfile <<EOF
 # Usa una imagen base de Python
-FROM python:3.9
+FROM ubuntu/apache2
 
-# Instala dependencias necesarias
-RUN apt-get update && \
-    apt-get install -y apache2 libapache2-mod-wsgi-py3 libmariadb-dev build-essential pkg-config && \
-    pip install Flask==2.3.3 flask-cors Flask-MySQLdb Flask-SQLAlchemy && \
-    rm -rf /var/lib/apt/lists/*
+WORKDIR /webapp
 
+COPY . .
 
-# Copia la aplicación y configura Apache
-COPY . /var/www/webapp
+# Install necessary packages
+RUN echo "Installing necessary packages" && \
+    apt update && \
+    apt install -y openssl python3-dev default-libmysqlclient-dev build-essential pkg-config mysql-client python3-pip && \
+    pip3 install Flask==2.3.3 flask-cors Flask-MySQLdb Flask-SQLAlchemy --break-system-packages
+
+# Copy SSL certificate and key
+RUN echo "Copying SSL certificate and key" && \
+    cp localhost.crt /etc/ssl/certs/localhost.crt && \
+    cp localhost.key /etc/ssl/private/localhost.key
+
+# Copy Apache configuration files
 COPY ./my-httpd-vhosts.conf /etc/apache2/sites-available/my-ssl.conf
 
-# Habilita SSL y el módulo WSGI de Apache
-RUN a2enmod wsgi ssl && \
-    a2ensite my-ssl && \
-    a2dissite 000-default
+# Modify 000-default.conf to use WSGI and SSL
+RUN echo "Modifying 000-default.conf" && \
+    echo "WSGIScriptAlias / /var/www/webapp/application.wsgi\n\
+DocumentRoot /var/www/webapp\n\
+<VirtualHost *:80>\n\
+    <Directory /var/www/webapp/>\n\
+        Order deny,allow\n\
+        Allow from all\n\
+    </Directory>\n\
+</VirtualHost>" > /etc/apache2/sites-available/000-default.conf
 
-# Expone el puerto 443 para HTTPS
-EXPOSE 443
+# Install and configure Apache modules
+RUN echo "Configuring Apache" && \
+    apt install -y libapache2-mod-wsgi-py3 && \
+    a2enmod ssl && \
+    a2enmod wsgi && \
+    a2enmod rewrite && \
+    a2dissite 000-default default-ssl && \
+    a2ensite my-ssl
 
-# Comando para iniciar Apache
+# Copy application files to /var/www/webapp
+RUN echo "Copying application files to /var/www/webapp" && \
+    cp -r . /var/www/webapp
+
+# Set permissions and ownership
+RUN echo "Setting permissions and ownership" && \
+    chown -R www-data:www-data /var/www/webapp && \
+    chmod -R 755 /var/www/webapp && \
+    chmod 644 /etc/ssl/certs/localhost.crt && \
+    chmod 600 /etc/ssl/private/localhost.key
+
+# Create application.wsgi inside the Docker container
+RUN echo "#!/usr/bin/python\n\
+import sys\n\
+sys.path.insert(0,\"/var/www/webapp/\")\n\
+from run import app as application" > /var/www/webapp/application.wsgi
+
+# Expose ports
+EXPOSE 80 443
+
+# Start Apache in the foreground
 CMD ["apachectl", "-D", "FOREGROUND"]
 EOF'
 
@@ -182,9 +221,9 @@ services:
     ports:
       - "8443:443"
     volumes:
-      - ./webapp:/var/www/webapp
-      - ./webapp/localhost.crt:/etc/ssl/certs/localhost.crt
-      - ./webapp/localhost.key:/etc/ssl/private/localhost.key
+      - .:/var/www/webapp
+      - ./localhost.crt:/etc/ssl/certs/localhost.crt
+      - ./localhost.key:/etc/ssl/private/localhost.key
     depends_on:
       - db
     environment:
@@ -219,7 +258,7 @@ sudo mkdir /var/lib/prometheus
 # Getting Prometheus from Github
 echo "Getting Prometheus"
 wget https://github.com/prometheus/prometheus/releases/download/v2.43.0/prometheus-2.43.0.linux-amd64.tar.gz
-tar vxf prometheus*.tar.gz
+sudo tar vxf prometheus*.tar.gz
 cd prometheus*/
 
 # Exporting files from Prometheus zip
@@ -236,12 +275,6 @@ sudo chown prometheus:prometheus /etc/prometheus
 sudo chown -R prometheus:prometheus /etc/prometheus/consoles
 sudo chown -R prometheus:prometheus /etc/prometheus/console_libraries
 sudo chown -R prometheus:prometheus /var/lib/prometheus
-
-# Node Exporter and Grafena Configuration
-echo "Configuring Prometheus to Node Exporter"
-sudo bash -c 'cat > /etc/prometheus/prometheus.yml <<EOF
-
-EOF'
 
 # Creating Prometheus Systemd Service
 echo "Creating Prometheus Systemd Service"
@@ -274,11 +307,79 @@ sudo systemctl start prometheus
 sudo ufw allow 9090/tcp
 
 # Getting Node Exporter from Github
+cd ..
 echo "Getting Node Exporter"
 wget https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_exporter-1.8.2.linux-amd64.tar.gz
-tar xvfz node_exporter-*.*-amd64.tar.gz
+sudo tar xvfz node_exporter-*.*-amd64.tar.gz
+
+echo "Configure Node Exporter in Prometheus"
+sudo bash -c 'cat > /etc/prometheus/prometheus.yml <<EOF
+# my global config
+global:
+  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here its Prometheus itself.
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "node"
+    static_configs:
+      - targets: ["localhost:9100"] 
+
+EOF'
+
+cd node_exporter-*.*-amd64
+sudo mv node_exporter /usr/local/bin/
+sudo chown prometheus:prometheus /usr/local/bin/node_exporter
+
+echo "Creating node_exporter as service"
+sudo bash -c 'cat > /etc/systemd/system/node_exporter.service <<EOF
+[Unit]
+Description=Node Exporter
+After=network.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/node_exporter
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+
+sudo systemctl daemon-reload
+sudo systemctl enable node_exporter
+sudo systemctl start node_exporter
+
+sudo ufw allow 9100/tcp
+
+echo "Restarting services"
 cd ..
+sudo systemctl restart prometheus
+sudo systemctl restart node_exporter
 
-# cd node_exporter-*.*-amd64
-# ./node_exporter
+echo "Installing Grafana"
+sudo sudo apt-get install -y software-properties-common
+sudo add-apt-repository "deb https://packages.grafana.com/oss/deb stable main"
+sudo apt-key adv --fetch-keys https://packages.grafana.com/gpg.key
+sudo apt-get update
+sudo apt-get install grafana
+sudo systemctl start grafana-server
+sudo systemctl enable grafana-server
 
+echo "Vagrant up done!"
