@@ -13,7 +13,7 @@ Una vez terminen de instalarse todas las dependencias y configuraciones de scrip
 ```
 192.168.50.2
 ```
-Te saldrá un aviso de que es una página insegura, le das a más detalles e ingresar de todas formas. Si quieres ver el certificado resultante, basta con darle click a la alerta de 'No seguro' al lado del buscador (depende del navegador) y luego a ver certificados. Debería aparecer toda la información relacionada con este proyecto.
+El navegador arrojará un aviso de que es una página insegura, haz click en ver más detalles y luego a ingresar de todas formas. Si quieres ver el certificado resultante, basta con darle click a la alerta de 'No seguro' al lado del buscador (depende del navegador) y luego a ver certificados. Debería aparecer toda la información relacionada con este proyecto.
 
 Con esto estaríamos comprobando que el servicio seguro de apache funciona pero, ¿cómo lo hace?
 
@@ -100,14 +100,39 @@ Con esto saldrán todos los logs del contenedor vagrant-db-1, ahora para ver su 
 
 Aquí se mostrarán todas las carpetas que tiene webapp, demostrando que docker-compose ha empaquetado correctamente la aplicación web
 
-En cuanto a cómo funciona, tenemos los siguientes comandos en script.sh
-
-## 
-
 # 3. EC2 con AWS
+
 
 # 4. Verificación de Prometheus
 
+Para verificar que Prometheus está correctamente instalado y funcionando, accede a la dirección de Prometheus en tu navegador:
+```
+http://192.168.50.2:9090
+```
+
+Esta dirección debería abrir la interfaz web de Prometheus. Desde aquí, se pueden explorar las métricas disponibles y realizar consultas en la barra de búsqueda.
+La configuración de Prometheus permite recolectar datos de varios puntos de monitoreo configurados en el archivo prometheus.yml, que incluye el mismo Prometheus y el servicio Node Exporter.
+
 # 5. Verificación de Node Exporter
 
+Node Exporter se utiliza para recolectar datos del sistema operativo de la máquina en la que se ejecuta. Para verificar que está funcionando accede a la dirección:
+```
+http://192.168.50.2:9100
+```
+
+Aquí se presentarán métricas de bajo nivel sobre la infraestructura de la máquina virtual.
+
 # 6. Verificación de Grafana + Prometheus
+
+Para verificar que Grafana está configurado y puede visualizar los datos de Prometheus, accede a la siguiente dirección:
+```
+http://192.168.50.2:3000
+```
+
+Aquí Grafana pedirá un inicio de sesión, así que deberás usar las credenciales predeterminadas (usuario: ```admin```, contraseña: ```admin```) y sigue las instrucciones para cambiar la contraseña en el primer inicio de sesión. A partir de aquí, se usará la contraseña que has especificado.
+
+En Grafana, añade una nueva fuente de datos configurando Prometheus como origen:
+1. Selecciona Prometheus como tipo de fuente de datos.
+2. Configura la URL de Prometheus como http://prometheus:9090.
+3. Guarda y prueba la conexión (botón azul abajo del todo).
+
